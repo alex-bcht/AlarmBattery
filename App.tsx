@@ -1,117 +1,149 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
+  NativeModules,
   View,
+  Text,
+  TextInput,
+  Button,
+  StyleSheet,
+  Platform,
 } from 'react-native';
+import DeviceInfo from 'react-native-device-info';
+import Sound from 'react-native-sound';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+Sound.setCategory('Playback');
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+const App: React.FC = () => {
+  const [targetLevel, setTargetLevel] = useState<string>('40');
+  const [isAlarmSet, setIsAlarmSet] = useState<boolean>(false);
+  const [ringtonePath, setRingtonePath] = useState<string>('');
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+  useEffect(() => {
+    const checkBatteryLevel = async () => {
+      const batteryLevel = await DeviceInfo.getBatteryLevel();
+      const currentLevel = Math.round(batteryLevel * 100);
+      if (currentLevel >= parseInt(targetLevel, 10) && isAlarmSet) {
+        playAlarmSound();
+      }
+    };
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+    const interval = setInterval(() => {
+      if (isAlarmSet) {
+        checkBatteryLevel();
+      }
+    }, 5000);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+    return () => clearInterval(interval);
+  }, [isAlarmSet, targetLevel]);
+
+  const playAlarmSound = () => {
+    if (Platform.OS === 'android' && ringtonePath.startsWith('content://')) {
+      NativeModules.RingtonePicker.playRingtoneFromUri(ringtonePath);
+      console.log('Playing ringtone from URI:', ringtonePath);
+    } else {
+      console.log('Playing ringtone from file path or default method');
+    }
+  };
+
+  const stopAlarmSound = () => {
+    NativeModules.RingtonePicker.stopRingtone();
+  };
+
+  const selectRingtone = () => {
+    NativeModules.RingtonePicker.pickRingtone()
+      .then((path: any) => {
+        setRingtonePath(path);
+        console.log('Selected ringtone path:', path);
+      })
+      .catch((error: any) => {
+        console.error(error);
+      });
+  };
+
+  const validateAndSetTargetLevel = (value: string) => {
+    const intValue = parseInt(value, 10);
+
+    if (isNaN(intValue)) {
+      setTargetLevel('');
+    } else {
+      const clampedValue = Math.min(Math.max(0, intValue), 100).toString();
+      setTargetLevel(clampedValue);
+    }
   };
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+    <View style={styles.container}>
+      <Text style={styles.title}>Alarm Settings</Text>
+      <View style={styles.buttonContainer}>
+        <Button
+          title="Choose Ringtone"
+          onPress={selectRingtone}
+          color="#007AFF"
+        />
+      </View>
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Target Battery Level (%):</Text>
+        <TextInput
+          style={styles.input}
+          keyboardType="numeric"
+          placeholder="Target Battery Level (%)"
+          value={targetLevel}
+          onChangeText={validateAndSetTargetLevel}
+          maxLength={3}
+        />
+      </View>
+      <View style={styles.buttonContainer}>
+        <Button
+          title={isAlarmSet ? 'Deactivate Alarm' : 'Activate Alarm'}
+          onPress={() => {
+            if (isAlarmSet) {
+              stopAlarmSound();
+            }
+            setIsAlarmSet(!isAlarmSet);
+          }}
+          color={isAlarmSet ? '#FF3B30' : '#4CD964'}
+        />
+      </View>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 50,
+    backgroundColor: '#F5FCFF',
   },
-  sectionTitle: {
+  title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#333',
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  buttonContainer: {
+    marginBottom: 20,
+    width: '80%',
   },
-  highlight: {
-    fontWeight: '700',
+  inputContainer: {
+    width: '80%',
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 5,
+  },
+  input: {
+    height: 40,
+    borderColor: '#CCCCCC',
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingLeft: 10,
+    fontSize: 16,
+    backgroundColor: '#FFF',
+    color: '#666',
   },
 });
 
